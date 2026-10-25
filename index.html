@@ -833,6 +833,9 @@
               <div class="card">
                 <h3>MANAGE VIDEOS <span class="tag" id="upCount">0</span></h3>
                 <div class="hintline" style="margin:-4px 0 14px;">Sign in to edit each title's home sections or delete it. Deleting removes its Supabase-stored video; external video URLs can only have their BCR Play listing removed.</div>
+                <div class="btn-row" style="margin:0 0 14px;">
+                  <button class="btn-mini" id="compressPostersBtn" type="button">COMPRESS EXISTING POSTERS</button>
+                </div>
                 <div class="gallery" id="gallery">
                   <div class="gempty">PUBLISHED TITLES APPEAR HERE</div>
                 </div>
@@ -1144,6 +1147,7 @@
     shareArmed: !!sess.get('bcr_up_token'),
     visibility: 'PUBLIC',
     posterData: '',
+    posterProcessing: false,
     uploads: [],
     mylist: [],
     current: null,
@@ -1184,6 +1188,39 @@
     try {
       store.set(PUBLIC_TITLES_CACHE_KEY, JSON.stringify({version:1, savedAt:Date.now(), items:sanitizePublicTitles(items)}));
     } catch(e){}
+  }
+  function compressPosterDataUrl(dataUrl){
+    return new Promise(function(resolve, reject){
+      if (typeof dataUrl !== 'string' || dataUrl.indexOf('data:image/') !== 0 || dataUrl.length <= 90000){ resolve(dataUrl); return; }
+      var image = new Image();
+      image.onload = function(){
+        try {
+          var sourceWidth = image.naturalWidth || image.width;
+          var sourceHeight = image.naturalHeight || image.height;
+          if (!sourceWidth || !sourceHeight) { resolve(dataUrl); return; }
+          var scale = Math.min(1, 480 / sourceWidth, 720 / sourceHeight);
+          var qualities = [0.76, 0.64, 0.52, 0.42];
+          var best = dataUrl;
+          for (var pass=0; pass<6; pass++){
+            var canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+            canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+            var context = canvas.getContext('2d');
+            if (!context) { resolve(dataUrl); return; }
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
+            for (var q=0; q<qualities.length; q++){
+              var candidate = canvas.toDataURL('image/jpeg', qualities[q]);
+              if (candidate.length < best.length) best = candidate;
+              if (candidate.length <= 90000){ resolve(candidate); return; }
+            }
+            scale *= 0.82;
+          }
+          resolve(best);
+        } catch(err){ reject(err); }
+      };
+      image.onerror = function(){ resolve(dataUrl); };
+      image.src = dataUrl;
+    });
   }
   /* ---------------- catalog (placeholder titles) ---------------- */
   var CATALOG = [
@@ -2035,11 +2072,23 @@
   $('posterFile').addEventListener('change', function(){
     var f = this.files && this.files[0];
     if (!f) return;
+    S.posterProcessing = true;
+    S.posterData = '';
     var r = new FileReader();
     r.onload = function(ev){
-      S.posterData = ev.target.result;
-      showPosterPreview(S.posterData);
+      var original = ev.target.result;
+      compressPosterDataUrl(original).then(function(compressed){
+        S.posterData = compressed;
+        showPosterPreview(S.posterData);
+        if (compressed.length < original.length) toast('POSTER COMPRESSED FOR FASTER LOADING');
+        if (compressed.length > 120000) toast('POSTER IS STILL LARGE');
+      }).catch(function(){
+        S.posterData = original;
+        showPosterPreview(S.posterData);
+        toast('POSTER COMPRESSION FAILED');
+      }).then(function(){ S.posterProcessing = false; });
     };
+    r.onerror = function(){ S.posterProcessing = false; toast('COULD NOT READ POSTER IMAGE'); };
     r.readAsDataURL(f);
   });
   $('videoFile').addEventListener('change', function(){
@@ -2097,10 +2146,55 @@
       BY_ID['u'+idx] = { id:'u'+idx, title:u.title, type:u.type, genre:u.genre, img:u.poster, art:'\uD83C\uDFAC', desc:u.desc, videoUrl:u.videoUrl };
     });
   }
+  async function compressExistingPosters(button){
+    if (!supabaseClient || !supabaseSession || !supabaseSession.user){ toast('ADMIN SIGN-IN REQUIRED'); return; }
+    if (S.titlesLoadState !== 'loaded'){ toast('WAIT FOR TITLES TO FINISH LOADING'); return; }
+    var targets = S.uploads.filter(function(item){
+      return item.id && typeof item.poster === 'string' && item.poster.indexOf('data:image/') === 0 && item.poster.length > 120000;
+    });
+    if (!targets.length){ toast('NO OVERSIZED POSTERS FOUND'); return; }
+    button.disabled = true;
+    var originalLabel = button.textContent;
+    button.textContent = 'COMPRESSING POSTERS…';
+    var updatedCount = 0, failedCount = 0;
+    logLine('Compressing ' + targets.length + ' existing poster image(s). Video files and title records will not be changed.');
+    try {
+      for (var i=0; i<targets.length; i++){
+        var item = targets[i];
+        var previous = item.poster;
+        try {
+          var compressed = await compressPosterDataUrl(previous);
+          if (!compressed || compressed.length >= previous.length || compressed.length > 120000){
+            throw new Error('Could not reduce this poster below the cache size limit.');
+          }
+          var saved = await supabaseClient.from('bcr_titles').update({poster_url:compressed}).eq('id', item.id).select('id').single();
+          if (saved.error) throw saved.error;
+          item.poster = compressed;
+          updatedCount++;
+          logLine('Compressed poster for "' + item.title + '" • ' + Math.round(previous.length / 1024) + ' KB → ' + Math.round(compressed.length / 1024) + ' KB.', 'ok');
+        } catch(err){
+          failedCount++;
+          logLine('Could not compress poster for "' + item.title + '" • ' + (err && err.message ? err.message : String(err)), 'err');
+        }
+      }
+      if (updatedCount){
+        writePublicTitlesCache(S.uploads);
+        paintAll();
+        renderGallery();
+      }
+      logLine('Poster compression finished • ' + updatedCount + ' updated, ' + failedCount + ' failed.', failedCount ? 'warn' : 'ok');
+      toast(updatedCount ? 'POSTERS COMPRESSED' : 'NO POSTERS UPDATED');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  }
+  $('compressPostersBtn').addEventListener('click', function(){ compressExistingPosters(this); });
 
   $('publishBtn').addEventListener('click', async function(){
     var title = val('upTitle');
     if (!title){ shake('scrConsole'); toast('GIVE THE TITLE A NAME'); return; }
+    if (S.posterProcessing){ toast('WAIT FOR POSTER COMPRESSION TO FINISH'); return; }
     if (!supabaseClient){ toast('SUPABASE IS NOT CONFIGURED'); logLine('Add the Supabase project URL and publishable key to the app source.', 'err'); return; }
     if (!supabaseSession || !supabaseSession.user){ toast('ADMIN SIGN-IN REQUIRED'); logLine('Sign in to Supabase before uploading.', 'warn'); return; }
     var file = $('videoFile').files && $('videoFile').files[0];
