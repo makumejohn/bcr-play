@@ -253,8 +253,17 @@
   .gcard:hover{ transform:translateY(-4px); box-shadow:0 18px 40px rgba(0,0,0,.5), 0 0 24px rgba(53,208,255,.18); }
   .gcard img{ width:100%; height:92px; object-fit:cover; display:block; }
   .gcard .cap{ padding:10px 11px 12px; }
-  .gcard .manage-actions{ padding:0 10px 10px; }
+  .gcard .manage-actions{ padding:0 10px 10px; display:flex; flex-direction:column; gap:8px; }
   .gcard .manage-actions .btn-mini{ width:100%; padding:8px 10px; }
+  .gcard .section-editor{ border:1px solid rgba(53,208,255,.22); background:rgba(53,208,255,.04); border-radius:9px; padding:8px 9px; }
+  .gcard .section-editor summary{ list-style:none; cursor:pointer; color:var(--cyan); font-size:7px; letter-spacing:1.5px; font-weight:900; }
+  .gcard .section-editor summary::-webkit-details-marker{ display:none; }
+  .gcard .section-editor summary::after{ content:"+"; float:right; font-size:12px; line-height:8px; }
+  .gcard .section-editor[open] summary::after{ content:"−"; }
+  .gcard .section-options{ display:grid; gap:8px; padding:10px 0; }
+  .gcard .section-options label{ display:flex; align-items:center; gap:7px; color:#DCE8F4; font-size:7px; letter-spacing:.8px; line-height:1.35; cursor:pointer; }
+  .gcard .section-options input{ width:13px; height:13px; margin:0; flex:0 0 auto; accent-color:#35D0FF; cursor:pointer; }
+  .gcard .section-hint{ margin:0 0 8px; color:#8391A5; font-size:7px; letter-spacing:.5px; line-height:1.5; }
   .gcard .n{ font-size:7.5px; letter-spacing:2px; font-weight:800; color:var(--cyan); }
   .gcard .t{ font-size:10px; font-weight:800; color:#fff; letter-spacing:.6px; margin-top:3px;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -281,6 +290,10 @@
     font-size:9px; letter-spacing:2px; font-weight:800; color:var(--steel); transition:all .15s ease;
   }
   .radio-pill.sel{ background:rgba(53,208,255,.16); border-color:rgba(53,208,255,.55); color:var(--cyan); }
+  .section-picker{ display:flex; flex-wrap:wrap; gap:8px; }
+  .field .section-picker .section-option{ display:flex; align-items:center; gap:8px; margin:0; padding:9px 11px; border:1px solid rgba(53,208,255,.2); border-radius:11px; background:rgba(53,208,255,.045); cursor:pointer; }
+  .field .section-picker .section-option input{ width:14px; height:14px; padding:0; margin:0; flex:0 0 auto; accent-color:#35D0FF; }
+  .field .section-picker .section-option span{ color:#DCE8F4; font-size:8px; letter-spacing:1px; line-height:1.35; }
 
   /* ===== SEARCH ===== */
   .searchbar{
@@ -739,6 +752,15 @@
                   <div class="radio-pill" id="visDraft">DRAFT &mdash; PRIVATE</div>
                 </div>
               </div>
+              <div class="field">
+                <label>HOME SECTIONS</label>
+                <div class="section-picker" role="group" aria-label="Choose home sections for this video">
+                  <label class="section-option"><input type="checkbox" data-upload-section="now_streaming"><span>NOW STREAMING</span></label>
+                  <label class="section-option"><input type="checkbox" data-upload-section="originals"><span>BCR STUDIOS ORIGINALS</span></label>
+                  <label class="section-option"><input type="checkbox" data-upload-section="animations"><span>ANIMATIONS</span></label>
+                </div>
+                <div class="hintline">Choose any combination manually; video type does not auto-assign placement. Leave all unchecked to keep it out of these three featured rails; published titles still appear in YOUR UPLOADS.</div>
+              </div>
               <div class="btn-row">
                 <button class="btn-main" id="publishBtn" style="justify-content:center;">PUBLISH UPLOAD</button>
                 <button class="btn-ghost" id="clearBtn" style="justify-content:center;">CLEAR</button>
@@ -810,7 +832,7 @@
 
               <div class="card">
                 <h3>MANAGE VIDEOS <span class="tag" id="upCount">0</span></h3>
-                <div class="hintline" style="margin:-4px 0 14px;">Sign in as the studio admin to see delete controls. Deleting permanently removes the title and its stored video.</div>
+                <div class="hintline" style="margin:-4px 0 14px;">Sign in to edit each title's home sections or delete it. Deleting removes its Supabase-stored video; external video URLs can only have their BCR Play listing removed.</div>
                 <div class="gallery" id="gallery">
                   <div class="gempty">PUBLISHED TITLES APPEAR HERE</div>
                 </div>
@@ -1145,7 +1167,42 @@
   ];
   var BY_ID = {};
   CATALOG.forEach(function(c){ BY_ID[c.id] = c; });
-
+  var HOME_SECTIONS = [
+    { key:'now_streaming', label:'NOW STREAMING' },
+    { key:'originals', label:'BCR STUDIOS ORIGINALS' },
+    { key:'animations', label:'ANIMATIONS' }
+  ];
+  function normalizeHomeSections(value){
+    if (!Array.isArray(value)) return [];
+    return HOME_SECTIONS.filter(function(section){ return value.indexOf(section.key) !== -1; }).map(function(section){ return section.key; });
+  }
+  function readCheckedHomeSections(root, attribute){
+    root = root || document;
+    var nodes = root.querySelectorAll('[' + attribute + ']');
+    var selected = [];
+    Array.prototype.forEach.call(nodes, function(node){
+      if (node.checked) selected.push(node.getAttribute(attribute));
+    });
+    return normalizeHomeSections(selected);
+  }
+  function resetUploadSections(){
+    var nodes = document.querySelectorAll('[data-upload-section]');
+    Array.prototype.forEach.call(nodes, function(node){ node.checked = false; });
+  }
+  function uploadCardItem(u, idx){
+    var item = { id:'u'+idx, title:u.title, type:u.type, genre:u.genre, img:u.poster, art:'\uD83C\uDFAC', desc:u.desc, videoUrl:u.videoUrl };
+    BY_ID[item.id] = item;
+    return item;
+  }
+  function uploadItemsForSection(sectionKey){
+    var items = [];
+    S.uploads.forEach(function(u, idx){
+      if (u.visibility === 'PUBLIC' && u.live && normalizeHomeSections(u.sections).indexOf(sectionKey) !== -1){
+        items.push(uploadCardItem(u, idx));
+      }
+    });
+    return items;
+  }
   function isAnim(c){ return c.type === 'ANIMATION'; }
   function inList(id){ return S.mylist.indexOf(id) !== -1; }
   function toggleList(id){
@@ -1186,8 +1243,7 @@
       return;
     }
     el.innerHTML = S.uploads.map(function(u, idx){
-      var c = { id:'u'+idx, title:u.title, type:u.type, genre:u.genre, img:u.poster, art:'\uD83C\uDFAC', desc:u.desc, videoUrl:u.videoUrl };
-      BY_ID['u'+idx] = c;
+      var c = uploadCardItem(u, idx);
       var badge = (u.visibility === 'PUBLIC' && u.live) ? 'PUBLIC' : 'DRAFT';
       var cls = (u.visibility === 'PUBLIC' && u.live) ? 'new' : 'draft';
       return tileHTML(c, { badge:badge, badgeCls:cls });
@@ -1195,9 +1251,9 @@
   }
 
   function paintAll(){
-    renderRail('rowStreaming', CATALOG.slice(0,8));
-    renderRail('rowOriginals', CATALOG.filter(function(c){ return c.type !== 'ANIMATION'; }).slice(2,8));
-    renderRail('rowAnims', CATALOG.filter(isAnim));
+    renderRail('rowStreaming', CATALOG.slice(0,8).concat(uploadItemsForSection('now_streaming')));
+    renderRail('rowOriginals', CATALOG.filter(function(c){ return c.type !== 'ANIMATION'; }).slice(2,8).concat(uploadItemsForSection('originals')));
+    renderRail('rowAnims', CATALOG.filter(isAnim).concat(uploadItemsForSection('animations')));
     renderUploadsInto('rowUploads');
     renderUploadsInto('libUploads');
     renderSearch();
@@ -1268,7 +1324,7 @@
           videoPath:row.video_path || '', storageBucket:row.storage_bucket || '',
           mimeType:row.video_mime_type || '',
           visibility:row.is_published ? 'PUBLIC' : 'DRAFT', live:!!row.is_published,
-          poster:row.poster_url || ''
+          poster:row.poster_url || '', sections:normalizeHomeSections(row.sections)
         });
       }
       S.uploads = uploads;
@@ -1352,7 +1408,33 @@
       toast('DELETE FAILED • CHECK THE UPLOAD LOG');
     }
   }
+  async function saveStoredTitleSections(id, button){
+    if (!supabaseClient || !supabaseSession || !supabaseSession.user){ toast('ADMIN SIGN-IN REQUIRED'); return; }
+    var item = S.uploads.find(function(x){ return String(x.id) === String(id); });
+    if (!item){ toast('VIDEO NOT FOUND'); return; }
+    var card = button.closest('.gcard');
+    if (!card){ toast('VIDEO CARD NOT FOUND'); return; }
+    var sections = readCheckedHomeSections(card, 'data-section-choice');
+    button.disabled = true;
+    try {
+      logLine('Saving home section placement for "' + item.title + '"…');
+      var result = await supabaseClient.from('bcr_titles').update({sections:sections}).eq('id', item.id).select('id').single();
+      if (result.error) throw result.error;
+      if (!result.data) throw new Error('No title row was updated. Check the admin update policy.');
+      item.sections = sections;
+      var labels = HOME_SECTIONS.filter(function(section){ return sections.indexOf(section.key) !== -1; }).map(function(section){ return section.label; });
+      logLine('Saved home sections for "' + item.title + '": ' + (labels.length ? labels.join(', ') : 'none of the three featured rails') + '.', 'ok');
+      toast('HOME SECTIONS SAVED');
+      await loadSupabaseUploads();
+    } catch (err){
+      logLine('Could not save home sections • ' + (err && err.message ? err.message : String(err)), 'err');
+      toast('SAVE FAILED • CHECK THE UPLOAD LOG');
+    } finally { button.disabled = false; }
+  }
   $('gallery').addEventListener('click', function(e){
+    if (e.target.closest('.manage-actions')) e.stopPropagation();
+    var saveSectionsButton = e.target.closest('[data-save-sections-id]');
+    if (saveSectionsButton){ e.preventDefault(); saveStoredTitleSections(saveSectionsButton.getAttribute('data-save-sections-id'), saveSectionsButton); return; }
     var deleteButton = e.target.closest('[data-delete-id]');
     if (deleteButton){ e.preventDefault(); e.stopPropagation(); deleteStoredTitle(deleteButton.getAttribute('data-delete-id')); return; }
     var publishButton = e.target.closest('[data-publish-id]');
@@ -1917,6 +1999,23 @@
     this.classList.add('sel'); $('visPublic').classList.remove('sel');
   });
 
+  function manageVideoControlsHTML(u){
+    if (!(supabaseSession && supabaseSession.user && u.id)) return '';
+    var sections = normalizeHomeSections(u.sections);
+    var choices = HOME_SECTIONS.map(function(section){
+      var checked = sections.indexOf(section.key) !== -1 ? ' checked' : '';
+      return '<label><input type="checkbox" data-section-choice="'+section.key+'"'+checked+'><span>'+section.label+'</span></label>';
+    }).join('');
+    return '<div class="manage-actions">' +
+      '<details class="section-editor"><summary>HOME SECTIONS ('+sections.length+')</summary>' +
+        '<div class="section-options">'+choices+'</div>' +
+        '<div class="section-hint">EMPTY = NONE OF THE THREE FEATURED RAILS. VIDEO TYPE DOES NOT AUTO-ASSIGN.</div>' +
+        '<button class="btn-mini" type="button" data-save-sections-id="'+u.id+'">SAVE SECTIONS</button>' +
+      '</details>' +
+      '<button class="btn-mini danger" type="button" data-delete-id="'+u.id+'" aria-label="Delete video">DELETE VIDEO</button>' +
+    '</div>';
+  }
+
   function renderGallery(){
     var g = $('gallery');
     $('upCount').textContent = S.uploads.length;
@@ -1935,7 +2034,7 @@
         '<div class="gbadge '+(live?'':'draft')+'">'+(live?'PUBLIC':'DRAFT')+'</div>' +
         ((!live && supabaseSession && supabaseSession.user && u.storageBucket === 'bcr-drafts') ? '<button class="btn-mini" data-publish-id="'+u.id+'" style="position:absolute;top:38px;right:8px;z-index:3;">PUBLISH</button>' : '') +
         '<div class="cap"><div class="n">'+u.type+' \u2022 '+u.genre+'</div><div class="t">'+u.title+'</div></div>' +
-        ((supabaseSession && supabaseSession.user && u.id) ? '<div class="manage-actions"><button class="btn-mini danger" type="button" data-delete-id="'+u.id+'" aria-label="Delete video">DELETE VIDEO</button></div>' : '');
+        manageVideoControlsHTML(u);
       g.appendChild(d);
     });
     S.uploads.forEach(function(u, idx){
@@ -1953,6 +2052,7 @@
     if (!file && !externalUrl){ toast('CHOOSE A VIDEO FILE OR PASTE A DIRECT VIDEO URL'); return; }
     if (externalUrl && !/^https:\/\//i.test(externalUrl)){ toast('VIDEO URL MUST START WITH HTTPS'); return; }
     var isPublic = S.visibility === 'PUBLIC';
+    var homeSections = readCheckedHomeSections(document, 'data-upload-section');
     if (!file && !isPublic){ toast('PRIVATE DRAFTS REQUIRE A VIDEO FILE UPLOAD'); return; }
     if (file && !/^video\//i.test(file.type)){ toast('PLEASE CHOOSE A VIDEO FILE'); return; }
     $('publishBtn').disabled = true;
@@ -1983,7 +2083,8 @@
         video_path: videoPath,
         video_mime_type: mimeType,
         poster_url: S.posterData || null,
-        is_published: isPublic
+        is_published: isPublic,
+        sections: homeSections
       };
       var insertResult = await supabaseClient.from('bcr_titles').insert(row).select().single();
       if (insertResult.error){
@@ -1996,6 +2097,7 @@
       wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink'); wipe('videoFile');
       S.posterData = '';
       resetPosterPicker();
+      resetUploadSections();
     } catch (err){
       var message = err && err.message ? err.message : String(err || 'Upload failed');
       logLine('Supabase upload failed • ' + message, 'err');
@@ -2009,7 +2111,7 @@
       videoPath:videoPath || '', storageBucket:storageBucket || '',
       visibility: isPublic ? 'PUBLIC' : 'DRAFT',
       live: !!live,
-      poster: S.posterData || ''
+      poster: S.posterData || '', sections:[]
     });
     renderGallery();
     wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink'); wipe('videoFile');
@@ -2022,6 +2124,7 @@
     wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink');
     S.posterData = '';
     resetPosterPicker();
+    resetUploadSections();
     toast('FORM CLEARED');
   });
 
@@ -2049,5 +2152,5 @@
   }
 })();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4f90da91b426c9c',t:'MTc5Mjg0NTY2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a500ff59ce4b2b28',t:'MTc5MjkyODk2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4f90da91b426c9c',t:'MTc5Mjg0NTY2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5013403cfb09bff',t:'MTc5MjkzMTExOA=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
