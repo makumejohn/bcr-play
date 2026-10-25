@@ -1843,6 +1843,23 @@
   });
 
   /* ---------------- UPLOAD: form & publish ---------------- */
+  function resetPosterPicker(){
+    var drop = $('posterDrop');
+    var input = $('posterFile');
+    if (!drop || !input) return;
+    input.value = '';
+    drop.innerHTML = '<div class="tx" id="posterTx">CLICK TO CHOOSE POSTER IMAGE</div>';
+    drop.appendChild(input);
+    input.style.display = 'none';
+  }
+  function showPosterPreview(dataUrl){
+    var drop = $('posterDrop');
+    var input = $('posterFile');
+    if (!drop || !input) return;
+    drop.innerHTML = '<img src="'+dataUrl+'" alt="">';
+    drop.appendChild(input);
+    input.style.display = 'none';
+  }
   $('posterDrop').addEventListener('click', function(){ $('posterFile').click(); });
   $('posterFile').addEventListener('change', function(){
     var f = this.files && this.files[0];
@@ -1850,9 +1867,7 @@
     var r = new FileReader();
     r.onload = function(ev){
       S.posterData = ev.target.result;
-      $('posterDrop').innerHTML = '<img src="'+S.posterData+'" alt="">';
-      $('posterDrop').appendChild($('posterFile'));
-      $('posterFile').style.display = 'none';
+      showPosterPreview(S.posterData);
     };
     r.readAsDataURL(f);
   });
@@ -1946,9 +1961,7 @@
       await loadSupabaseUploads();
       wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink'); wipe('videoFile');
       S.posterData = '';
-      $('posterDrop').innerHTML = '<div class="tx" id="posterTx">CLICK TO CHOOSE POSTER IMAGE</div>';
-      $('posterDrop').appendChild($('posterFile'));
-      $('posterFile').style.display = 'none';
+      resetPosterPicker();
     } catch (err){
       var message = err && err.message ? err.message : String(err || 'Upload failed');
       logLine('Supabase upload failed • ' + message, 'err');
@@ -1967,18 +1980,14 @@
     renderGallery();
     wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink'); wipe('videoFile');
     S.posterData = '';
-    $('posterDrop').innerHTML = '<div class="tx" id="posterTx">CLICK TO CHOOSE POSTER IMAGE</div>';
-    $('posterDrop').appendChild($('posterFile'));
-    $('posterFile').style.display = 'none';
+    resetPosterPicker();
     paintAll();
   }
 
   $('clearBtn').addEventListener('click', function(){
     wipe('upTitle'); wipe('upDesc'); wipe('upFile'); wipe('upLink');
     S.posterData = '';
-    $('posterDrop').innerHTML = '<div class="tx" id="posterTx">CLICK TO CHOOSE POSTER IMAGE</div>';
-    $('posterDrop').appendChild($('posterFile'));
-    $('posterFile').style.display = 'none';
+    resetPosterPicker();
     toast('FORM CLEARED');
   });
 
@@ -2006,5 +2015,5 @@
   }
 })();
 </script>
-<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4f90da91b426c9c',t:'MTc5Mjg0NTY2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a500aa4928892b28',t:'MTc5MjkyNTQ3Nw=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+<script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a4f90da91b426c9c',t:'MTc5Mjg0NTY2MQ=='};var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
 </html>
